@@ -1,11 +1,13 @@
-ENTRY(kernel_main) /* 最初に実行する関数名 */
+ENTRY(start) /* エントリポイントを boot.asm の start に変更 */
 
 SECTIONS
 {
-    /* 1MB（0x100000）の場所から配置するのがOSの定番 */
-    . = 1M;
+    /* MBRが読み込まれるアドレス 0x7C00 に設定 */
+    . = 0x7c00;
 
-    .text : { *(.text) }   /* プログラム本体 */
-    .data : { *(.data) }   /* データ */
-    .bss  : { *(.bss)  }   /* 未初期化変数 */
+    .boot : { *(.boot) }
+
+    .text : { *(.text) } /* プログラム本体 */
+    .data : { *(.data) } /* データ */
+    .bss  : { *(.bss) }  /* 未初期化変数 */
 }
