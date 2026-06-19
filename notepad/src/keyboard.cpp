@@ -20,7 +20,7 @@ char Keyboard::get_char() {
 }
 
 char Keyboard::scancode_to_ascii(uint8_t scancode) {
-　　　//だいたい全部のやつを
+    //だいたい全部のやつを
     static const char ascii_map[128] = {
         0,    27,  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  '0',  '-',  '=',  '\b', '\t',
         'q',  'w',  'e',  'r',  't',  'y',  'u',  'i',  'o',  'p',  '[',  ']',  '\n', 0,   'a',  's',
