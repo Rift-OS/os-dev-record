@@ -3,38 +3,61 @@ section .boot
 global start
 extern kernel_main
 
+; カーネルが配置される直後のアドレス (0x7c00 + 512バイト = 0x7e00)
+KERNEL_OFFSET equ 0x7e00
+
 start:
-    ; セグメントレジスタとスタックの初期化
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
     mov sp, 0x7c00
 
-    ; 画面クリア (BIOS割り込み INT 10h)
+    mov [BOOT_DRIVE], dl
+
+    ; 画面クリア
     mov ax, 0x0003
     int 10h
 
-    ; A20ラインの有効化 (高速化のため簡易版)
+    ; ディスクの2セクタ目（カーネル部分）をメモリの 0x7e00 に読み込む
+    mov bx, KERNEL_OFFSET
+    mov dh, 10                  ; 多めに10セクタ分読み込む
+    mov dl, [BOOT_DRIVE]
+    call disk_load
+
+    ; A20ラインの有効化
     in al, 0x92
     or al, 2
     out 0x92, al
 
-    ; GDTの読み込み
     cli
     lgdt [gdt_descriptor]
 
-    ; CR0レジスタのPEビットをセットしてプロテクトモードへ移行
     mov eax, cr0
     or eax, 1
     mov cr0, eax
 
-    ; 32bitコードセグメントへ長距離ジャンプ (パイプラインクリア)
     jmp CODE_SEG:init_pm
+
+disk_load:
+    push dx
+    mov ah, 0x02
+    mov al, dh
+    mov ch, 0x00
+    mov dh, 0x00
+    mov cl, 0x02                ; 2セクタ目から読み込み
+    int 0x13
+    jc disk_error
+    pop dx
+    ret
+
+disk_error:
+    mov ax, 0x0e45              ; エラーなら 'E' を表示
+    int 0x10
+    jmp $
 
 [bits 32]
 init_pm:
-    ; 32bit環境用のセグメントレジスタ初期化
     mov ax, DATA_SEG
     mov ds, ax
     mov es, ax
@@ -44,35 +67,19 @@ init_pm:
     mov ebp, 0x90000
     mov esp, ebp
 
-    ; kernel.c のメイン関数を実行
-    call kernel_main
-
-    ; 無限ループ
+    call kernel_main            ; 0x7e00 以降にあるカーネル本体を実行
     jmp $
 
-; --- GDT (Global Descriptor Table) 設定 ---
+BOOT_DRIVE: db 0
+
 gdt_start:
-    ; 空記述子
-    dd 0x0
-    dd 0x0
-
+    dd 0x0, 0x0
 gdt_code:
-    ; コードセグメント記述子 (基点:0, 限界:4GB, 属性:高特権・実行可・読込可)
-    dw 0xffff
-    dw 0x0
-    db 0x0
-    db 10011010b
-    db 11001111b
-    db 0x0
-
+    dw 0xffff, 0x0
+    db 0x0, 10011010b, 11001111b, 0x0
 gdt_data:
-    ; データセグメント記述子 (基点:0, 限界:4GB, 属性:高特権・書込可・読込可)
-    dw 0xffff
-    dw 0x0
-    db 0x0
-    db 10010010b
-    db 11001111b
-    db 0x0
+    dw 0xffff, 0x0
+    db 0x0, 10010010b, 11001111b, 0x0
 gdt_end:
 
 gdt_descriptor:
@@ -82,6 +89,5 @@ gdt_descriptor:
 CODE_SEG equ gdt_code - gdt_start
 DATA_SEG equ gdt_data - gdt_start
 
-; 512バイトのブートセクタ末尾にマジックナンバーを配置
 times 510-($-$$) db 0
 dw 0xaa55
