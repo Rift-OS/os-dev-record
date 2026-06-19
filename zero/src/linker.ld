@@ -1,13 +1,23 @@
-ENTRY(start) /* エントリポイントを boot.asm の start に変更 */
+OUTPUT_FORMAT("binary")
+ENTRY(start)
 
 SECTIONS
 {
-    /* MBRが読み込まれるアドレス 0x7C00 に設定 */
     . = 0x7c00;
 
-    .boot : { *(.boot) }
+    /* 最初の512バイト（ブートセクタ） */
+    .boot : {
+        *(.boot)
+    }
 
-    .text : { *(.text) } /* プログラム本体 */
-    .data : { *(.data) } /* データ */
-    .bss  : { *(.bss) }  /* 未初期化変数 */
+    /* 512バイト目以降に配置されるカーネルコード */
+    .text : {
+        *(.text)
+    }
+    .data : {
+        *(.data)
+    }
+    .bss : {
+        *(.bss)
+    }
 }
