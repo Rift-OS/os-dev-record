@@ -22,7 +22,7 @@ extern "C" void kernel_main() {
     Hardware::Console::init();
     
     // メインタイトルバーの描画 (背景白、文字黒の最上段バー)
-    Hardware::Console::put_string("--- Rift OS notepad v1 (Type anything / Backspace available) ---\n", 0xF0);
+    Hardware::Console::put_string("--- Rift OS Notepad v2 ---\n", 0xF0);
     
     // 入力ループ
     while (1) {
