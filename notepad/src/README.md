@@ -20,7 +20,7 @@ ld -m elf_i386 -T linker.ld boot.o console.o keyboard.o kernel.o -o OS.img
 mkdir -p iso_root
 cp OS.img iso_root/
 genisoimage -R -b OS.img -no-emul-boot -boot-load-size 16 -o myos.iso iso_root
-qemu-system-i386 -cdrom myos.iso
+qemu-system-i386 -cdrom notepad.iso
 EOF
 
 # 2. 実行権限を付ける
