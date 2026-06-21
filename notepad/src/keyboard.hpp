@@ -32,6 +32,9 @@ private:
         return val;
     }
     static char scancode_to_ascii(uint8_t scancode);
+
+    // Shiftキーの押下状態を管理するフラグ
+    static bool shift_pressed;
 };
 
 } // namespace Hardware
