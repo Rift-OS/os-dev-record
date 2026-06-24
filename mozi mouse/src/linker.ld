@@ -1,0 +1,25 @@
+OUTPUT_FORMAT("binary")
+ENTRY(kernel_entry)
+
+SECTIONS
+{
+    . = 0x00100000;
+
+    .text : ALIGN(4K) {
+        *(.text.entry)
+        *(.text*)
+    }
+
+    .rodata : ALIGN(4K) {
+        *(.rodata*)
+    }
+
+    .data : ALIGN(4K) {
+        *(.data*)
+    }
+
+    .bss : ALIGN(4K) {
+        *(COMMON)
+        *(.bss*)
+    }
+}
