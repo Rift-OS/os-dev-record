@@ -68,9 +68,8 @@ asm_mouse_handler:
     mov fs, ax
     mov gs, ax
     
-    sub esp, 4
+    ; C++関数を呼ぶ前のスタック調整を排除（アライメント維持のため）
     call c_mouse_handler
-    add esp, 4
     
     pop gs
     pop fs
