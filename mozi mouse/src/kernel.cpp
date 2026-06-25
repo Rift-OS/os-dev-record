@@ -1,39 +1,37 @@
-#include <cstring>
-
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
 typedef int int32_t;
 
 // ============================================================================
-// 外部アセンブラ関数の宣言
+// 外部アセンブラ関数の宣言 [cite: 1]
 // ============================================================================
 extern "C" {
-    void load_idt(uint32_t idt_ptr);
-    void asm_mouse_handler();
-    void kernel_main();
-    void c_mouse_handler();
+    void load_idt(uint32_t idt_ptr); [cite: 1]
+    void asm_mouse_handler(); [cite: 1]
+    void kernel_main(); [cite: 1]
+    void c_mouse_handler(); [cite: 1]
 }
 
 // ============================================================================
-// I/O ポート制御マクロ
+// I/O ポート制御マクロ [cite: 1]
 // ============================================================================
 inline void outb(uint16_t port, uint8_t val) {
-    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port));
+    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port)); [cite: 1]
 }
 
 inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    asm volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
+    uint8_t ret; [cite: 1]
+    asm volatile("inb %1, %0" : "=a"(ret) : "Nd"(port)); [cite: 1]
+    return ret; [cite: 1]
 }
 
 inline void io_wait() {
-    outb(0x80, 0);
+    outb(0x80, 0); [cite: 1]
 }
 
 // ============================================================================
-// PIC (Priority Interrupt Controller) 関連定義
+// PIC (Priority Interrupt Controller) 関連定義 [cite: 1]
 // ============================================================================
 #define PIC1_COMMAND 0x0020
 #define PIC1_DATA    0x0021
@@ -46,43 +44,32 @@ inline void io_wait() {
 #define PIC_EOI      0x20
 
 void init_pic() {
-    // PIC1 (マスター) 初期化
-    outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
-    io_wait();
+    outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4); [cite: 1]
+    io_wait(); [cite: 1]
+    outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4); [cite: 1]
+    io_wait(); [cite: 1]
     
-    // PIC2 (スレーブ) 初期化
-    outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
-    io_wait();
+    outb(PIC1_DATA, 0x20); [cite: 1]
+    io_wait(); [cite: 1]
+    outb(PIC2_DATA, 0x28); [cite: 1]
+    io_wait(); [cite: 1]
     
-    // 割り込みベクタのオフセット設定
-    // マスター: 0x20 (IRQ0-7), スレーブ: 0x28 (IRQ8-15)
-    outb(PIC1_DATA, 0x20);
-    io_wait();
-    outb(PIC2_DATA, 0x28);
-    io_wait();
+    outb(PIC1_DATA, 0x04); [cite: 1]
+    io_wait(); [cite: 1]
+    outb(PIC2_DATA, 0x02); [cite: 1]
+    io_wait(); [cite: 1]
     
-    // カスケード接続設定
-    // PIC1 の IRQ2 に PIC2 を接続
-    outb(PIC1_DATA, 0x04);
-    io_wait();
-    outb(PIC2_DATA, 0x02);
-    io_wait();
+    outb(PIC1_DATA, 0x01); [cite: 1]
+    io_wait(); [cite: 1]
+    outb(PIC2_DATA, 0x01); [cite: 1]
+    io_wait(); [cite: 1]
     
-    // 8086 モード
-    outb(PIC1_DATA, 0x01);
-    io_wait();
-    outb(PIC2_DATA, 0x01);
-    io_wait();
-    
-    // マスク設定
-    // PIC1: 0xFB = 11111011b (IRQ2 許可、その他マスク)
-    // PIC2: 0xEF = 11101111b (IRQ12 許可、その他マスク)
-    outb(PIC1_DATA, 0xFB);
-    outb(PIC2_DATA, 0xEF);
+    outb(PIC1_DATA, 0xFB); [cite: 1]
+    outb(PIC2_DATA, 0xEF); [cite: 1]
 }
 
 // ============================================================================
-// IDT (Interrupt Descriptor Table) 関連定義
+// IDT (Interrupt Descriptor Table) 関連定義 [cite: 1]
 // ============================================================================
 #define KERNEL_CS 0x08
 #define KERNEL_DS 0x10
@@ -90,54 +77,49 @@ void init_pic() {
 #define IDT_FLAG_PRESENT    0x80
 #define IDT_FLAG_RING0      0x00
 #define IDT_FLAG_INT_GATE   0x0E
-#define IDT_FLAG_INT32      0x08
 
 #define MOUSE_IRQ_VECTOR    0x2C
 
 struct IDTEntry {
-    uint16_t offset_lower;
-    uint16_t selector;
-    uint8_t  reserved;
-    uint8_t  type_attr;
-    uint16_t offset_upper;
-} __attribute__((packed));
+    uint16_t offset_lower; [cite: 1]
+    uint16_t selector; [cite: 1]
+    uint8_t  reserved; [cite: 1]
+    uint8_t  type_attr; [cite: 1]
+    uint16_t offset_upper; [cite: 1]
+} __attribute__((packed)); [cite: 1]
 
 struct IDTPtr {
-    uint16_t limit;
-    uint32_t base;
-} __attribute__((packed));
+    uint16_t limit; [cite: 1]
+    uint32_t base; [cite: 1]
+} __attribute__((packed)); [cite: 1]
 
-volatile IDTEntry idt[256];
-volatile IDTPtr idtp;
+volatile IDTEntry idt[256]; [cite: 1]
+volatile IDTPtr idtp; [cite: 1]
 
 void set_idt_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
-    idt[num].offset_lower = base & 0xFFFF;
-    idt[num].offset_upper = (base >> 16) & 0xFFFF;
-    idt[num].selector     = sel;
-    idt[num].reserved     = 0;
-    idt[num].type_attr    = flags;
+    idt[num].offset_lower = base & 0xFFFF; [cite: 1]
+    idt[num].offset_upper = (base >> 16) & 0xFFFF; [cite: 1]
+    idt[num].selector     = sel; [cite: 1]
+    idt[num].reserved     = 0; [cite: 1]
+    idt[num].type_attr    = flags; [cite: 1]
 }
 
 void init_idt() {
-    // IDT テーブル初期化
-    idtp.limit = (sizeof(IDTEntry) * 256) - 1;
-    idtp.base  = (uint32_t)&idt;
+    idtp.limit = (sizeof(IDTEntry) * 256) - 1; [cite: 1]
+    idtp.base  = (uint32_t)&idt; [cite: 1]
     
-    // 全エントリをゼロクリア
     for (int i = 0; i < 256; i++) {
-        set_idt_gate(i, 0, 0, 0);
+        set_idt_gate(i, 0, 0, 0); [cite: 1]
     }
     
-    // マウス割り込み (IRQ12 -> ベクタ 0x2C)
-    uint8_t flags = IDT_FLAG_PRESENT | IDT_FLAG_RING0 | IDT_FLAG_INT_GATE;
-    set_idt_gate(MOUSE_IRQ_VECTOR, (uint32_t)asm_mouse_handler, KERNEL_CS, flags);
+    uint8_t flags = IDT_FLAG_PRESENT | IDT_FLAG_RING0 | IDT_FLAG_INT_GATE; [cite: 1]
+    set_idt_gate(MOUSE_IRQ_VECTOR, (uint32_t)asm_mouse_handler, KERNEL_CS, flags); [cite: 1]
     
-    // IDT をロード
-    load_idt((uint32_t)&idtp);
+    load_idt((uint32_t)&idtp); [cite: 1]
 }
 
 // ============================================================================
-// PS/2 マウス関連定義
+// PS/2 マウス関連定義 [cite: 1]
 // ============================================================================
 #define MOUSE_PORT_DATA  0x60
 #define MOUSE_PORT_STAT  0x64
@@ -158,171 +140,146 @@ void init_idt() {
 #define MOUSE_TIMEOUT    100000
 
 enum MouseError {
-    MOUSE_OK = 0,
-    MOUSE_TIMEOUT_ERR = 1,
-    MOUSE_SYNC_ERR = 2
+    MOUSE_OK = 0, [cite: 1]
+    MOUSE_TIMEOUT_ERR = 1, [cite: 1]
+    MOUSE_SYNC_ERR = 2 [cite: 1]
 };
 
-volatile MouseError g_mouse_error = MOUSE_OK;
+volatile MouseError g_mouse_error = MOUSE_OK; [cite: 1]
 
 void mouse_wait_signal(uint8_t type) {
-    uint32_t timeout = MOUSE_TIMEOUT;
+    uint32_t timeout = MOUSE_TIMEOUT; [cite: 1]
     
     if (type == 0) {
-        // 読み込み可能まで待機 (ステータス bit0 = 1)
         while (timeout--) {
-            if ((inb(MOUSE_PORT_STAT) & 0x01) == 0x01) {
-                return;
+            if ((inb(MOUSE_PORT_STAT) & 0x01) == 0x01) { [cite: 1]
+                return; [cite: 1]
             }
         }
     } else {
-        // 書き込み可能まで待機 (ステータス bit1 = 0)
         while (timeout--) {
-            if ((inb(MOUSE_PORT_STAT) & 0x02) == 0x00) {
-                return;
+            if ((inb(MOUSE_PORT_STAT) & 0x02) == 0x00) { [cite: 1]
+                return; [cite: 1]
             }
         }
     }
-    
-    // タイムアウト
-    g_mouse_error = MOUSE_TIMEOUT_ERR;
+    g_mouse_error = MOUSE_TIMEOUT_ERR; [cite: 1]
 }
 
 void mouse_write(uint8_t data) {
-    mouse_wait_signal(1);
-    outb(MOUSE_PORT_CMD, MOUSE_KBC_SEND);
-    mouse_wait_signal(1);
-    outb(MOUSE_PORT_DATA, data);
+    mouse_wait_signal(1); [cite: 1]
+    outb(MOUSE_PORT_CMD, MOUSE_KBC_SEND); [cite: 1]
+    mouse_wait_signal(1); [cite: 1]
+    outb(MOUSE_PORT_DATA, data); [cite: 1]
 }
 
 uint8_t mouse_read() {
-    mouse_wait_signal(0);
-    return inb(MOUSE_PORT_DATA);
+    mouse_wait_signal(0); [cite: 1]
+    return inb(MOUSE_PORT_DATA); [cite: 1]
 }
 
 void init_mouse() {
-    uint8_t status;
+    uint8_t status; [cite: 1]
     
-    // コマンドバイトの読み込み
-    mouse_wait_signal(1);
-    outb(MOUSE_PORT_CMD, 0x20);
-    mouse_wait_signal(0);
-    status = inb(MOUSE_PORT_DATA);
+    mouse_wait_signal(1); [cite: 1]
+    outb(MOUSE_PORT_CMD, 0x20); [cite: 1]
+    mouse_wait_signal(0); [cite: 1]
+    status = inb(MOUSE_PORT_DATA); [cite: 1]
     
-    // bit1 (マウス割り込み有効化) = 1
-    // bit5 (マウス無効化) = 0
-    status = (status | 0x02) & ~0x20;
+    status = (status | 0x02) & ~0x20; [cite: 1]
     
-    // コマンドバイトの書き戻し
-    mouse_wait_signal(1);
-    outb(MOUSE_PORT_CMD, 0x60);
-    mouse_wait_signal(1);
-    outb(MOUSE_PORT_DATA, status);
+    mouse_wait_signal(1); [cite: 1]
+    outb(MOUSE_PORT_CMD, 0x60); [cite: 1]
+    mouse_wait_signal(1); [cite: 1]
+    outb(MOUSE_PORT_DATA, status); [cite: 1]
     
-    // デフォルト設定の有効化
-    mouse_write(MOUSE_CMD_DEFAULT);
-    mouse_read();  // ACK の受信
+    mouse_write(MOUSE_CMD_DEFAULT); [cite: 1]
+    mouse_read(); [cite: 1]
     
-    // マウスデータ送信の開始
-    mouse_write(MOUSE_CMD_ENABLE);
-    mouse_read();  // ACK の受信
+    mouse_write(MOUSE_CMD_ENABLE); [cite: 1]
+    mouse_read(); [cite: 1]
 }
 
 // ============================================================================
-// マウスデータ解析
+// マウスデータ解析 [cite: 1]
 // ============================================================================
 struct MouseState {
-    volatile uint8_t cycle;
-    volatile uint8_t packet[3];
-    volatile int32_t x;
-    volatile int32_t y;
-    volatile bool left_button;
-    volatile bool right_button;
-    volatile bool middle_button;
-} volatile g_mouse = {0, {0, 0, 0}, 320, 240, false, false, false};
+    volatile uint8_t cycle; [cite: 1]
+    volatile uint8_t packet[3]; [cite: 1]
+    volatile int32_t x; [cite: 1]
+    volatile int32_t y; [cite: 1]
+    volatile uint8_t left_button;   // bool から uint8_t に変更して安全性を向上
+    volatile uint8_t right_button;
+    volatile uint8_t middle_button;
+} volatile g_mouse = {0, {0, 0, 0}, 320, 240, 0, 0, 0}; [cite: 1]
 
 extern "C"
 void c_mouse_handler() {
-    uint8_t status = inb(MOUSE_PORT_STAT);
+    uint8_t status = inb(MOUSE_PORT_STAT); [cite: 1]
     
-    // 出力バッファが満杯かつ、マウスからのデータ (bit5=1) か確認
-    if ((status & 0x01) && (status & MOUSE_AUX_PORT_BIT)) {
-        uint8_t data = inb(MOUSE_PORT_DATA);
+    if ((status & 0x01) && (status & MOUSE_AUX_PORT_BIT)) { [cite: 1]
+        uint8_t data = inb(MOUSE_PORT_DATA); [cite: 1]
         
-        switch (g_mouse.cycle) {
-            case 0:
-                // 1バイト目：同期ビット (bit3) が 1 であるべき
-                if ((data & MOUSE_SYNC_BIT) == MOUSE_SYNC_BIT) {
-                    g_mouse.packet[0] = data;
-                    g_mouse.cycle++;
-                } else {
-                    // 同期ズレ：cycle を 0 に保持してスキップ
-                    g_mouse_error = MOUSE_SYNC_ERR;
+        switch (g_mouse.cycle) { [cite: 1]
+            case 0: [cite: 1]
+                if ((data & MOUSE_SYNC_BIT) == MOUSE_SYNC_BIT) { [cite: 1]
+                    g_mouse.packet[0] = data; [cite: 1]
+                    g_mouse.cycle++; [cite: 1]
+                } else { [cite: 1]
+                    g_mouse_error = MOUSE_SYNC_ERR; [cite: 1]
                 }
-                break;
+                break; [cite: 1]
                 
-            case 1:
-                g_mouse.packet[1] = data;
-                g_mouse.cycle++;
-                break;
+            case 1: [cite: 1]
+                g_mouse.packet[1] = data; [cite: 1]
+                g_mouse.cycle++; [cite: 1]
+                break; [cite: 1]
                 
-            case 2:
-                g_mouse.packet[2] = data;
-                g_mouse.cycle = 0;
+            case 2: [cite: 1]
+                g_mouse.packet[2] = data; [cite: 1]
+                g_mouse.cycle = 0; [cite: 1]
                 
-                // ボタン状態の解析
-                g_mouse.left_button   = (g_mouse.packet[0] & MOUSE_LEFT_BTN) != 0;
-                g_mouse.right_button  = (g_mouse.packet[0] & MOUSE_RIGHT_BTN) != 0;
-                g_mouse.middle_button = (g_mouse.packet[0] & MOUSE_MIDDLE_BTN) != 0;
+                g_mouse.left_button   = (g_mouse.packet[0] & MOUSE_LEFT_BTN) ? 1 : 0; [cite: 1]
+                g_mouse.right_button  = (g_mouse.packet[0] & MOUSE_RIGHT_BTN) ? 1 : 0; [cite: 1]
+                g_mouse.middle_button = (g_mouse.packet[0] & MOUSE_MIDDLE_BTN) ? 1 : 0; [cite: 1]
                 
-                // X, Y 移動量の算出（符号拡張）
-                int32_t move_x = (int32_t)g_mouse.packet[1];
-                int32_t move_y = (int32_t)g_mouse.packet[2];
+                int32_t move_x = (int32_t)g_mouse.packet[1]; [cite: 1]
+                int32_t move_y = (int32_t)g_mouse.packet[2]; [cite: 1]
                 
-                // X 軸の符号拡張（bit 10 が符号ビット）
-                if (g_mouse.packet[0] & MOUSE_X_SIGN_BIT) {
-                    move_x |= 0xFFFFFF00;
-                }
+                if (g_mouse.packet[0] & MOUSE_X_SIGN_BIT) { [cite: 1]
+                    move_x |= 0xFFFFFF00; [cite: 1]
+                } [cite: 1]
+                if (g_mouse.packet[0] & MOUSE_Y_SIGN_BIT) { [cite: 1]
+                    move_y |= 0xFFFFFF00; [cite: 1]
+                } [cite: 1]
                 
-                // Y 軸の符号拡張（bit 11 が符号ビット）
-                if (g_mouse.packet[0] & MOUSE_Y_SIGN_BIT) {
-                    move_y |= 0xFFFFFF00;
-                }
+                g_mouse.x += move_x; [cite: 1]
+                g_mouse.y -= move_y; [cite: 1]
                 
-                // マウス座標の更新（画面座標系への変換）
-                g_mouse.x += move_x;
-                g_mouse.y -= move_y;  // Y 軸反転
-                
-                // 画面範囲のクランプ（800x600 を想定）
-                if (g_mouse.x < 0) g_mouse.x = 0;
-                if (g_mouse.x >= 800) g_mouse.x = 799;
-                if (g_mouse.y < 0) g_mouse.y = 0;
-                if (g_mouse.y >= 600) g_mouse.y = 599;
-                
-                break;
+                if (g_mouse.x < 0) g_mouse.x = 0; [cite: 1]
+                if (g_mouse.x >= 800) g_mouse.x = 799; [cite: 1]
+                if (g_mouse.y < 0) g_mouse.y = 0; [cite: 1]
+                if (g_mouse.y >= 600) g_mouse.y = 599; [cite: 1]
+                break; [cite: 1]
         }
     }
     
-    // PIC に対して割り込み終了通知 (EOI) を送信
-    outb(PIC2_COMMAND, PIC_EOI);  // スレーブ PIC
-    outb(PIC1_COMMAND, PIC_EOI);  // マスター PIC
+    outb(PIC2_COMMAND, PIC_EOI); [cite: 1]
+    outb(PIC1_COMMAND, PIC_EOI); [cite: 1]
 }
 
 // ============================================================================
-// カーネルメインエントリー
+// カーネルメインエントリー [cite: 1]
 // ============================================================================
 extern "C"
 void kernel_main() {
-    // マウス初期化
-    init_pic();
-    init_idt();
-    init_mouse();
+    init_pic(); [cite: 1]
+    init_idt(); [cite: 1]
+    init_mouse(); [cite: 1]
     
-    // CPU の割り込み許可
-    asm volatile("sti");
+    asm volatile("sti"); [cite: 1]
     
-    // メインループ
     while (1) {
-        asm volatile("hlt");
+        asm volatile("hlt"); [cite: 1]
     }
 }
