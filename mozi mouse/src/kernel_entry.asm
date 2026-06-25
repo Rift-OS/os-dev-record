@@ -53,6 +53,7 @@ load_idt:
     pop ebp
     ret
 
+
 asm_mouse_handler:
     pushad
     push ds
@@ -68,8 +69,7 @@ asm_mouse_handler:
     mov fs, ax
     mov gs, ax
     
-    ; アセンブラ側では何も調整せずそのまま呼ぶ
-    call c_mouse_handler
+    call c_mouse_handler   ; 余計な sub esp, 4 などを削除
     
     pop gs
     pop fs
