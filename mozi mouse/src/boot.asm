@@ -16,29 +16,51 @@ init_segments:
     ; BIOSが設定した起動ドライブ番号(DL)を退避
     mov [boot_drive], dl
 
-    ; 1. ディスクからカーネル本体を 0x0000:0x8000 に読み込む (64セクタ＝32KB)
-    ; ISOエミュレーションは不安定なことがあるため、最大3回リトライさせる
-    mov di, 3          ; リトライカウンター
-read_loop:
-    mov ah, 0x02        ; BIOS Read Sectors
-    mov al, 64          ; 読み込むセクタ数
+    ; ------------------------------------------------------------------------
+    ; 【修正】カーネル本体(64セクタ分)を 0x0000:0x8000 へ1セクタずつ安全に読み込む
+    ; ------------------------------------------------------------------------
+    mov bx, 0x8000      ; 読み込み先の開始メモリ番地 (ES:BX)
+    mov cl, 2           ; セクタ2 から開始 (セクタ1はブートローダー自身)
     mov ch, 0           ; シリンダ 0
-    mov cl, 2           ; セクタ 2 から開始
     mov dh, 0           ; ヘッド 0
-    mov dl, [boot_drive] ; 起動ドライブ番号をセット
-    mov bx, 0x8000      ; ES:BX = 0x0000:0x8000
-    int 0x13
-    jnc read_ok         ; エラーがなければ次へ
+    mov si, 64          ; 読み込む総セクタ数 (32KB分)
 
-    ; エラー時はディスクシステムをリセットしてリトライ
+read_sector_loop:
+    mov di, 3           ; 各セクタごとに最大3回リトライ
+retry_loop:
+    mov ah, 0x02        ; BIOS Read Sectors
+    mov al, 1           ; 1セクタずつ確実に読む
+    mov dl, [boot_drive]
+    int 0x13
+    jnc read_success    ; エラーがなければ次へ
+
+    ; エラー時はディスクをリセットしてリトライ
     xor ah, ah
     mov dl, [boot_drive]
     int 0x13
     dec di
-    jnz read_loop
-    jmp disk_error      ; 3回失敗したらエラー表示へ
+    jnz retry_loop
+    jmp disk_error      ; 3回連続失敗でエラー表示へ
 
-read_ok:
+read_success:
+    ; 次のセクタを読み込むために、メモリ番地を512バイト進める
+    add bx, 512
+    inc cl              ; セクタ番号を+1
+    cmp cl, 19          ; 標準的な1.44MB FDは1トラック18セクタまで
+    jl next_step
+    
+    ; 18セクタを超えたらヘッドを切り替えるかシリンダを進める
+    mov cl, 1           ; セクタ番号を1に戻す
+    inc dh              ; ヘッドを1に進める
+    cmp dh, 2           ; ヘッドは0と1の2面
+    jl next_step
+    mov dh, 0           ; ヘッドを0に戻す
+    inc ch              ; シリンダを次へ進める
+
+next_step:
+    dec si
+    jnz read_sector_loop ; 指定セクタ数分ループ
+
     ; 2. A20ラインの有効化 (Fast A20)
     in al, 0x92
     or al, 2
