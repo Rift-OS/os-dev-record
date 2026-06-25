@@ -11,78 +11,60 @@ global asm_mouse_handler
 extern kernel_main
 extern c_mouse_handler
 
-; ============================================================================
-; .text.entry セクション（1MBの先頭に配置される）
-; ============================================================================
 section .text.entry
 
 kernel_entry:
-    cli
-    cld
-    
-    ; スタックポインタ初期化
-    mov esp, __stack_top
-    
-    ; スタックキャナリ設定
-    mov dword [__stack_top - 4], 0xDEADBEEF
-    
-    mov ax, KERNEL_DS
-    mov ss, ax
-    
-    xor eax, eax
-    mov fs, ax
-    mov gs, ax
-    
-    call kernel_main
-    
-.halt:
-    cli
-    hlt
-    jmp .halt
+cli
+cld
+mov esp, __stack_top
+mov dword [__stack_top - 4], 0xDEADBEEF
+mov ax, KERNEL_DS
+mov ss, ax
+xor eax, eax
+mov fs, ax
+mov gs, ax
+call kernel_main
 
-; ============================================================================
-; .text セクション
-; ============================================================================
+.halt:
+cli
+hlt
+jmp .halt
+
 section .text
 
 load_idt:
-    push ebp
-    mov ebp, esp
-    mov edx, [ebp + 8]
-    lidt [edx]
-    pop ebp
-    ret
+push ebp
+mov ebp, esp
+mov edx, [ebp + 8]
+lidt [edx]
+pop ebp
+ret
 
 asm_mouse_handler:
-    pushad
-    push ds
-    push es
-    push fs
-    push gs
-    
-    cld
-    
-    mov ax, KERNEL_DS
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    
-    ; C++関数を呼ぶ前のスタック調整を排除（アライメント維持のため）
-    call c_mouse_handler
-    
-    pop gs
-    pop fs
-    pop es
-    pop ds
-    popad
-    iretd
+pushad
+push ds
+push es
+push fs
+push gs
+cld
+mov ax, KERNEL_DS
+mov ds, ax
+mov es, ax
+mov fs, ax
+mov gs, ax
+mov ebx, esp
+and esp, 0xFFFFFFF0
+call c_mouse_handler
+mov esp, ebx
+pop gs
+pop fs
+pop es
+pop ds
+popad
+iretd
 
-; ============================================================================
-; .bss セクション
-; ============================================================================
 section .bss
 align 16
 __stack_bottom:
-    resb KERNEL_STACK_SIZE
+resb KERNEL_STACK_SIZE
 __stack_top:
