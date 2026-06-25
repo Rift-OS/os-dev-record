@@ -2,7 +2,8 @@ OUTPUT_FORMAT("elf32-i386")
 ENTRY(kernel_entry)
 
 SECTIONS
-{\n    . = 0x00100000;
+{
+    . = 0x00100000;
     __kernel_start = .;
 
     .text.entry : ALIGN(0x1000) {
