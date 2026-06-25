@@ -4,7 +4,7 @@
 ## 動作確認
 ### テスト環境
 - v86(https://copy.sh/v86/)
-- QUMEU
+- QUMU
 ## ビルド環境
 **gcc**,**nasm**,**genisoimage**
 ---
