@@ -44,31 +44,26 @@ inline void io_wait() {
 #define ICW1_ICW4    0x01
 
 void init_pic() {
-    // ICW1: 初期化命令の開始
     outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
     io_wait();
     outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
     io_wait();
 
-    // ICW2: 割り込みベクトル番号のマッピングを変更 (0x20-0x27, 0x28-0x2F)
     outb(PIC1_DATA, 0x20);
     io_wait();
     outb(PIC2_DATA, 0x28);
     io_wait();
 
-    // ICW3: マスタ・スレーブの接続ピン設定
-    outb(PIC1_DATA, 0x04); // IRQ2にスレーブが接続
+    outb(PIC1_DATA, 0x04);
     io_wait();
-    outb(PIC2_DATA, 0x02); // マスタのIRQ2に接続
+    outb(PIC2_DATA, 0x02);
     io_wait();
 
-    // ICW4: 8086モードに設定
     outb(PIC1_DATA, 0x01);
     io_wait();
     outb(PIC2_DATA, 0x01);
     io_wait();
 
-    // OCW1: 割り込みマスク（IRQ12 マウスと、スレーブへのカスケードピン IRQ2 を許可）
     outb(PIC1_DATA, 0xFB); // 11111011 (IRQ2許可)
     outb(PIC2_DATA, 0xEF); // 11101111 (IRQ12許可)
 }
@@ -80,7 +75,7 @@ void init_pic() {
 #define IDT_FLAG_RING0    0x00
 #define IDT_FLAG_INT_GATE 0x0E
 #define KERNEL_CS         0x08
-#define MOUSE_IRQ_VECTOR  0x2C // IRQ12 -> 0x20 + 12 = 0x2C
+#define MOUSE_IRQ_VECTOR  0x2C
 
 struct IDTEntry {
     uint16_t offset_lower;
@@ -129,13 +124,6 @@ void init_idt() {
 #define MOUSE_STATUS_OBF 0x01
 #define MOUSE_KBC_SEND  0xD4
 
-enum MouseError {
-    MOUSE_OK = 0,
-    MOUSE_TIMEOUT_ERR = 1,
-};
-
-volatile MouseError g_mouse_error = MOUSE_OK;
-
 struct MousePacket {
     uint8_t  phase;
     uint8_t  packet[3];
@@ -153,16 +141,15 @@ volatile MousePacket g_mouse;
 
 void mouse_wait_signal(uint8_t type) {
     uint32_t timeout = 100000;
-    if (type == 1) { // 制御用書き込み準備完了を待つ (Input Buffer Empty)
+    if (type == 1) {
         while (timeout--) {
             if ((inb(MOUSE_PORT_CMD) & MOUSE_STATUS_IBF) == 0) return;
         }
-    } else { // 読み込みデータ到着を待つ (Output Buffer Full)
+    } else {
         while (timeout--) {
             if ((inb(MOUSE_PORT_CMD) & MOUSE_STATUS_OBF) != 0) return;
         }
     }
-    g_mouse_error = MOUSE_TIMEOUT_ERR;
 }
 
 void mouse_write(uint8_t data) {
@@ -179,21 +166,19 @@ uint8_t mouse_read() {
 
 void init_mouse() {
     g_mouse.phase = 0;
-    g_mouse.x = 400; // 画面中央初期化
-    g_mouse.y = 300;
+    // テキストモード (80x25) の中心付近に初期座標を設定
+    g_mouse.x = 40; 
+    g_mouse.y = 12;
     g_mouse.buttons = 0;
 
-    // マウスインターフェース有効化
     mouse_wait_signal(1);
     outb(MOUSE_PORT_CMD, 0xA8);
 
-    // デフォルト設定
     mouse_write(0xF6);
-    mouse_read(); // ACKの受け取り
+    mouse_read();
 
-    // データ転送有効化
     mouse_write(0xF4);
-    mouse_read(); // ACKの受け取り
+    mouse_read();
 }
 
 // ============================================================================
@@ -202,7 +187,6 @@ void init_mouse() {
 extern "C" void c_mouse_handler() {
     uint8_t status = inb(MOUSE_PORT_CMD);
     
-    // 出力バッファが空、またはキーボードデータの場合は無視
     if (!(status & MOUSE_STATUS_OBF) || !(status & 0x20)) {
         outb(PIC1_COMMAND, 0x20);
         outb(PIC2_COMMAND, 0x20);
@@ -212,7 +196,6 @@ extern "C" void c_mouse_handler() {
     uint8_t data = inb(MOUSE_PORT_DATA);
 
     if (g_mouse.phase == 0) {
-        // 第一バイトは特定のビット（通常bit3が1）が立っているか検証
         if ((data & 0x08) == 0x08) {
             g_mouse.packet[0] = data;
             g_mouse.phase = 1;
@@ -229,41 +212,115 @@ extern "C" void c_mouse_handler() {
         int32_t move_x = (int32_t)g_mouse.packet[1];
         int32_t move_y = (int32_t)g_mouse.packet[2];
 
-        // 符号拡張
-        if (g_mouse.packet[0] & MOUSE_X_SIGN_BIT) {
-            move_x |= 0xFFFFFF00;
-        }
-        if (g_mouse.packet[0] & MOUSE_Y_SIGN_BIT) {
-            move_y |= 0xFFFFFF00;
-        }
+        if (g_mouse.packet[0] & MOUSE_X_SIGN_BIT) move_x |= 0xFFFFFF00;
+        if (g_mouse.packet[0] & MOUSE_Y_SIGN_BIT) move_y |= 0xFFFFFF00;
 
         g_mouse.x += move_x;
-        g_mouse.y -= move_y; // Y軸反転対応
+        g_mouse.y -= move_y; // Y軸方向の反転制御
 
-        // 画面外クランプ (800x600)
-        if (g_mouse.x < 0) g_mouse.x = 0;
-        if (g_mouse.x >= 800) g_mouse.x = 799;
-        if (g_mouse.y < 0) g_mouse.y = 0;
-        if (g_mouse.y >= 600) g_mouse.y = 599;
+        // VGAテキストモードの標準画面サイズ (80x25) にクランプ
+        if (g_mouse.x < 0)  g_mouse.x = 0;
+        if (g_mouse.x >= 80) g_mouse.x = 79;
+        if (g_mouse.y < 0)  g_mouse.y = 0;
+        if (g_mouse.y >= 25) g_mouse.y = 24;
     }
 
-    // PICに割り込み終了(EOI)を通知
     outb(PIC2_COMMAND, 0x20);
     outb(PIC1_COMMAND, 0x20);
+}
+
+// ============================================================================
+// デバッグ用画面表示補助関数
+// ============================================================================
+void print_string(int x, int y, const char* str, uint8_t color) {
+    volatile uint8_t* vram = (volatile uint8_t*)0xB8000;
+    int offset = (y * 80 + x) * 2;
+    while (*str) {
+        vram[offset] = *str++;
+        vram[offset + 1] = color;
+        offset += 2;
+    }
+}
+
+void print_int(int x, int y, int32_t num, uint8_t color) {
+    char buf[12];
+    int i = 10;
+    buf[11] = '\0';
+    
+    int is_negative = 0;
+    if (num < 0) {
+        is_negative = 1;
+        num = -num;
+    } else if (num == 0) {
+        buf[--i] = '0';
+    }
+
+    while (num > 0 && i > 0) {
+        buf[--i] = '0' + (num % 10);
+        num /= 10;
+    }
+
+    if (is_negative && i > 0) {
+        buf[--i] = '-';
+    }
+
+    print_string(x, y, &buf[i], color);
 }
 
 // ============================================================================
 // カーネルエントリーポイント
 // ============================================================================
 extern "C" void kernel_main() {
+    // 画面のクリア
+    volatile uint8_t* vram = (volatile uint8_t*)0xB8000;
+    for (int i = 0; i < 80 * 25 * 2; i += 2) {
+        vram[i] = ' ';
+        vram[i + 1] = 0x07; // 黒背景・白文字
+    }
+
+    print_string(0, 0, "Rift-OS Mouse mozi.", 0x0A); // 緑文字表示
+
     init_pic();
     init_idt();
     init_mouse();
 
-    // 割り込み許可命令
     asm volatile("sti");
 
+    int32_t last_x = -1;
+    int32_t last_y = -1;
+
     while (1) {
+        // X と Y の数値をリアルタイムで左上に描画
+        print_string(0, 2, "X:     ", 0x0F);
+        print_int(3, 2, g_mouse.x, 0x0E); // 黄色でX座標表示
+
+        print_string(12, 2, "Y:     ", 0x0F);
+        print_int(15, 2, g_mouse.y, 0x0E); // 黄色でY座標表示
+
+        // 古いマウスカーソルの描画を消去
+        if (last_x != -1 && last_y != -1) {
+            int old_offset = (last_y * 80 + last_x) * 2;
+            // 数値表示領域と被らない場合のみ消去
+            if (!(last_y == 2 && last_x < 25) && !(last_y == 0)) {
+                vram[old_offset] = ' ';
+                vram[old_offset + 1] = 0x07;
+            }
+        }
+
+        // 新しいマウスカーソル（'X' マーク）を画面に描画
+        int32_t current_x = g_mouse.x;
+        int32_t current_y = g_mouse.y;
+        int new_offset = (current_y * 80 + current_x) * 2;
+        
+        if (!(current_y == 2 && current_x < 25) && !(current_y == 0)) {
+            vram[new_offset] = 'X';      // カーソル記号
+            vram[new_offset + 1] = 0x0C; // 赤色で描画
+        }
+
+        last_x = current_x;
+        last_y = current_y;
+
+        // CPUへの負荷軽減命令
         asm volatile("hlt");
     }
 }
