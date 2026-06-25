@@ -13,9 +13,9 @@ init_segments:
     mov ss, ax
     mov sp, 0x7C00
 
-    ; 1. ディスクからカーネル本体（512バイト目以降）を 0x0000:0x8000 に読み込む
+    ; 1. ディスクからカーネル本体を 0x0000:0x8000 に十分な量（64セクタ＝32KB）読み込む
     mov ah, 0x02        ; BIOS Read Sectors
-    mov al, 15          ; 読み込むセクタ数
+    mov al, 64          ; 読み込むセクタ数 (多めに確保)
     mov ch, 0           ; シリンダ 0
     mov cl, 2           ; セクタ 2 から開始
     mov dh, 0           ; ヘッド 0
@@ -37,7 +37,7 @@ init_segments:
     or eax, 1
     mov cr0, eax
 
-    ; 5. 32bitコードセグメントへジャンプ (pm_entryのドットを削除)
+    ; 5. 32bitコードセグメントへジャンプ
     jmp 0x08:pm_entry
 
 disk_error:
@@ -77,7 +77,7 @@ gdt_pointer:
 ; 32bit 保護モード・初期設定
 ; ============================================================================
 bits 32
-pm_entry:               ; ドットを削除
+pm_entry:
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -85,15 +85,15 @@ pm_entry:               ; ドットを削除
     mov gs, ax
     mov ss, ax
 
-    ; 6. 一時領域(0x8000)から1MB(0x100000)へカーネルを転送
+    ; 6. 一時領域(0x8000)から1MB(0x100000)へカーネルを転送 (32KB分 = 8192個のdword)
     mov esi, 0x8000
     mov edi, 0x100000
-    mov ecx, 1920
+    mov ecx, 8192
     rep movsd
 
-    ; 7. リンカスクリプトで1MBに配置されている kernel_entry へジャンプ
+    ; 7. 1MBに配置されている kernel_entry へジャンプ
     jmp 0x08:0x100000
 
-; ブートシグネチャ（512バイトぴったりにする）
+; ブートシグネチャ
 times 510-($-$$) db 0
 dw 0xAA55
