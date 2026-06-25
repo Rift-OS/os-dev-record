@@ -4,9 +4,9 @@ bits 16
 section .text
 
 boot_start:
-    jmp 0x0000:.init_segments
+    jmp 0x0000:init_segments
 
-.init_segments:
+init_segments:
     xor ax, ax
     mov ds, ax
     mov es, ax
@@ -14,7 +14,6 @@ boot_start:
     mov sp, 0x7C00
 
     ; 1. ディスクからカーネル本体（512バイト目以降）を 0x0000:0x8000 に読み込む
-    ; (とりあえず15セクタ分。カーネルが大きくなったらここを増やします)
     mov ah, 0x02        ; BIOS Read Sectors
     mov al, 15          ; 読み込むセクタ数
     mov ch, 0           ; シリンダ 0
@@ -22,7 +21,7 @@ boot_start:
     mov dh, 0           ; ヘッド 0
     mov bx, 0x8000      ; ES:BX = 0x0000:0x8000
     int 0x13
-    jc .error
+    jc disk_error
 
     ; 2. A20ラインの有効化 (Fast A20)
     in al, 0x92
@@ -38,21 +37,21 @@ boot_start:
     or eax, 1
     mov cr0, eax
 
-    ; 5. 32bitコードセグメントへジャンプ (0x08はGDTのコード記述子)
-    jmp 0x08:.pm_entry
+    ; 5. 32bitコードセグメントへジャンプ (pm_entryのドットを削除)
+    jmp 0x08:pm_entry
 
-.error:
+disk_error:
     mov si, msg_error
-.loop_err:
+loop_err:
     lodsb
     or al, al
-    jz .halt
+    jz halt_loop
     mov ah, 0x0E
     int 0x10
-    jmp .loop_err
-.halt:
+    jmp loop_err
+halt_loop:
     hlt
-    jmp .halt
+    jmp halt_loop
 
 msg_error: db "Disk Read Error!", 0
 
@@ -78,7 +77,7 @@ gdt_pointer:
 ; 32bit 保護モード・初期設定
 ; ============================================================================
 bits 32
-.pm_entry:
+pm_entry:               ; ドットを削除
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -86,8 +85,7 @@ bits 32
     mov gs, ax
     mov ss, ax
 
-    ; 6. 一時領域(0x8000)からリンカが想定している1MB(0x100000)へカーネルを転送
-    ; (15セクタ = 7680バイト = 1920ダブルワード)
+    ; 6. 一時領域(0x8000)から1MB(0x100000)へカーネルを転送
     mov esi, 0x8000
     mov edi, 0x100000
     mov ecx, 1920
