@@ -64,8 +64,8 @@ void init_pic() {
     outb(PIC2_DATA, 0x01);
     io_wait();
 
-    outb(PIC1_DATA, 0xFB); // 11111011 (IRQ2許可)
-    outb(PIC2_DATA, 0xEF); // 11101111 (IRQ12許可)
+    outb(PIC1_DATA, 0xFB); // IRQ2許可
+    outb(PIC2_DATA, 0xEF); // IRQ12許可
 }
 
 // ============================================================================
@@ -129,6 +129,9 @@ struct MousePacket {
     uint8_t  packet[3];
     int32_t  x;
     int32_t  y;
+    // 微小な移動量を蓄積するための内部バッファを追加
+    int32_t  fraction_x;
+    int32_t  fraction_y;
     uint8_t  buttons;
 };
 
@@ -168,35 +171,37 @@ void init_mouse() {
     g_mouse.phase = 0;
     g_mouse.x = 40; 
     g_mouse.y = 12;
+    g_mouse.fraction_x = 0;
+    g_mouse.fraction_y = 0;
     g_mouse.buttons = 0;
 
-    // 1. マウスインターフェースを有効化 (0xA8)
+    // マウスインターフェースを有効化
     mouse_wait_signal(1);
     outb(MOUSE_PORT_CMD, 0xA8);
 
-    // 2. コントローラのコンフィグレーション（コマンドバイト）を読み出す (0x20)
+    // コントローラのコンフィグレーションを読み出す
     mouse_wait_signal(1);
     outb(MOUSE_PORT_CMD, 0x20);
     mouse_wait_signal(0);
     uint8_t status = inb(MOUSE_PORT_DATA);
 
-    // 3. IRQ12（マウス割り込み）の許可ビット(ビット1)を1にする
-    status |= 0x02;  // マウス割り込み有効化
-    status &= ~0x20; // マウス無効化ビットを解除
+    // IRQ12許可設定
+    status |= 0x02;  
+    status &= ~0x20; 
 
-    // 4. 変更したコンフィグレーションを書き戻す (0x60)
+    // コンフィグレーション書き戻し
     mouse_wait_signal(1);
     outb(MOUSE_PORT_CMD, 0x60);
     mouse_wait_signal(1);
     outb(MOUSE_PORT_DATA, status);
 
-    // 5. マウスに「デフォルト設定に戻す」コマンドを送る (0xF6)
+    // デフォルト設定
     mouse_write(0xF6);
-    mouse_read(); // ACK (0xFA) の受け取り
+    mouse_read(); 
 
-    // 6. マウスに「データ送信を開始しろ」と命じる (0xF4)
+    // データ送信開始
     mouse_write(0xF4);
-    mouse_read(); // ACK (0xFA) の受け取り
+    mouse_read(); 
 }
 
 // ============================================================================
@@ -233,10 +238,25 @@ extern "C" __attribute__((force_align_arg_pointer)) void c_mouse_handler() {
         if (g_mouse.packet[0] & MOUSE_X_SIGN_BIT) move_x |= 0xFFFFFF00;
         if (g_mouse.packet[0] & MOUSE_Y_SIGN_BIT) move_y |= 0xFFFFFF00;
 
-        g_mouse.x += move_x;
-        g_mouse.y -= move_y; // Y軸方向の反転制御
+        // 【ここを変更：速度調整ロジック】
+        // フロッピー/テキストモード(80x25)に対して移動量が大きすぎるため、
+        // 届いた移動量をいったん蓄積バッファに加え、8で割った分（または16で割った分）だけ座標を動かします。
+        g_mouse.fraction_x += move_x;
+        g_mouse.fraction_y += move_y;
 
-        // VGAテキストモードの標準画面サイズ (80x25) にクランプ
+        // 8分の1の感度に調整 (もしこれでも早ければ、下の「8」を「16」に大きくしてください)
+        int32_t actual_move_x = g_mouse.fraction_x / 8;
+        int32_t actual_move_y = g_mouse.fraction_y / 8;
+
+        // 消費した移動量をバッファから引く
+        g_mouse.fraction_x -= actual_move_x * 8;
+        g_mouse.fraction_y -= actual_move_y * 8;
+
+        // 実際の座標に反映
+        g_mouse.x += actual_move_x;
+        g_mouse.y -= actual_move_y; 
+
+        // VGAテキストモード (80x25) にクランプ
         if (g_mouse.x < 0)  g_mouse.x = 0;
         if (g_mouse.x >= 80) g_mouse.x = 79;
         if (g_mouse.y < 0)  g_mouse.y = 0;
@@ -292,10 +312,10 @@ extern "C" void kernel_main() {
     volatile uint8_t* vram = (volatile uint8_t*)0xB8000;
     for (int i = 0; i < 80 * 25 * 2; i += 2) {
         vram[i] = ' ';
-        vram[i + 1] = 0x07; // 黒背景・白文字
+        vram[i + 1] = 0x07; 
     }
 
-    print_string(0, 0, "Rift-OS Mouse mozi.", 0x0A); // 緑文字表示
+    print_string(0, 0, "Rift-OS Mouse mozi.", 0x0A); 
 
     init_pic();
     init_idt();
@@ -308,10 +328,10 @@ extern "C" void kernel_main() {
 
     while (1) {
         print_string(0, 2, "X:     ", 0x0F);
-        print_int(3, 2, g_mouse.x, 0x0E); // 黄色でX座標表示
+        print_int(3, 2, g_mouse.x, 0x0E); 
 
         print_string(12, 2, "Y:     ", 0x0F);
-        print_int(15, 2, g_mouse.y, 0x0E); // 黄色でY座標表示
+        print_int(15, 2, g_mouse.y, 0x0E); 
 
         if (last_x != -1 && last_y != -1) {
             int old_offset = (last_y * 80 + last_x) * 2;
@@ -326,8 +346,8 @@ extern "C" void kernel_main() {
         int new_offset = (current_y * 80 + current_x) * 2;
         
         if (!(current_y == 2 && current_x < 25) && !(current_y == 0)) {
-            vram[new_offset] = 'X';      // カーソル記号
-            vram[new_offset + 1] = 0x0C; // 赤色で描画
+            vram[new_offset] = 'X';      
+            vram[new_offset + 1] = 0x0C; 
         }
 
         last_x = current_x;
