@@ -13,16 +13,32 @@ init_segments:
     mov ss, ax
     mov sp, 0x7C00
 
-    ; 1. ディスクからカーネル本体を 0x0000:0x8000 に十分な量（64セクタ＝32KB）読み込む
+    ; BIOSが設定した起動ドライブ番号(DL)を退避
+    mov [boot_drive], dl
+
+    ; 1. ディスクからカーネル本体を 0x0000:0x8000 に読み込む (64セクタ＝32KB)
+    ; ISOエミュレーションは不安定なことがあるため、最大3回リトライさせる
+    mov di, 3          ; リトライカウンター
+read_loop:
     mov ah, 0x02        ; BIOS Read Sectors
-    mov al, 64          ; 読み込むセクタ数 (多めに確保)
+    mov al, 64          ; 読み込むセクタ数
     mov ch, 0           ; シリンダ 0
     mov cl, 2           ; セクタ 2 から開始
     mov dh, 0           ; ヘッド 0
+    mov dl, [boot_drive] ; 起動ドライブ番号をセット
     mov bx, 0x8000      ; ES:BX = 0x0000:0x8000
     int 0x13
-    jc disk_error
+    jnc read_ok         ; エラーがなければ次へ
 
+    ; エラー時はディスクシステムをリセットしてリトライ
+    xor ah, ah
+    mov dl, [boot_drive]
+    int 0x13
+    dec di
+    jnz read_loop
+    jmp disk_error      ; 3回失敗したらエラー表示へ
+
+read_ok:
     ; 2. A20ラインの有効化 (Fast A20)
     in al, 0x92
     or al, 2
@@ -54,6 +70,7 @@ halt_loop:
     jmp halt_loop
 
 msg_error: db "Disk Read Error!", 0
+boot_drive: db 0
 
 ; ============================================================================
 ; GDT (Global Descriptor Table) 定義
