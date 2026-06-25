@@ -12,7 +12,8 @@ extern "C" {
     void load_idt(uint32_t idt_ptr);
     void asm_mouse_handler();
     void kernel_main();
-    void c_mouse_handler();
+    // 属性を付与して宣言
+    __attribute__((force_align_arg_pointer)) void c_mouse_handler();
 }
 
 // ============================================================================
@@ -166,7 +167,6 @@ uint8_t mouse_read() {
 
 void init_mouse() {
     g_mouse.phase = 0;
-    // テキストモード (80x25) の中心付近に初期座標を設定
     g_mouse.x = 40; 
     g_mouse.y = 12;
     g_mouse.buttons = 0;
@@ -184,7 +184,8 @@ void init_mouse() {
 // ============================================================================
 // 割り込みハンドラ (C++ 側実装)
 // ============================================================================
-extern "C" void c_mouse_handler() {
+// __attribute__((force_align_arg_pointer)) を付与し、スタックのアライメントをコンパイラに自動調整させる
+extern "C" __attribute__((force_align_arg_pointer)) void c_mouse_handler() {
     uint8_t status = inb(MOUSE_PORT_CMD);
     
     if (!(status & MOUSE_STATUS_OBF) || !(status & 0x20)) {
@@ -216,9 +217,8 @@ extern "C" void c_mouse_handler() {
         if (g_mouse.packet[0] & MOUSE_Y_SIGN_BIT) move_y |= 0xFFFFFF00;
 
         g_mouse.x += move_x;
-        g_mouse.y -= move_y; // Y軸方向の反転制御
+        g_mouse.y -= move_y;
 
-        // VGAテキストモードの標準画面サイズ (80x25) にクランプ
         if (g_mouse.x < 0)  g_mouse.x = 0;
         if (g_mouse.x >= 80) g_mouse.x = 79;
         if (g_mouse.y < 0)  g_mouse.y = 0;
@@ -271,14 +271,13 @@ void print_int(int x, int y, int32_t num, uint8_t color) {
 // カーネルエントリーポイント
 // ============================================================================
 extern "C" void kernel_main() {
-    // 画面のクリア
     volatile uint8_t* vram = (volatile uint8_t*)0xB8000;
     for (int i = 0; i < 80 * 25 * 2; i += 2) {
         vram[i] = ' ';
-        vram[i + 1] = 0x07; // 黒背景・白文字
+        vram[i + 1] = 0x07;
     }
 
-    print_string(0, 0, "Rift-OS Mouse mozi.", 0x0A); // 緑文字表示
+    print_string(0, 0, "Rift-OS Mouse mozi.", 0x0A);
 
     init_pic();
     init_idt();
@@ -290,37 +289,32 @@ extern "C" void kernel_main() {
     int32_t last_y = -1;
 
     while (1) {
-        // X と Y の数値をリアルタイムで左上に描画
         print_string(0, 2, "X:     ", 0x0F);
-        print_int(3, 2, g_mouse.x, 0x0E); // 黄色でX座標表示
+        print_int(3, 2, g_mouse.x, 0x0E);
 
         print_string(12, 2, "Y:     ", 0x0F);
-        print_int(15, 2, g_mouse.y, 0x0E); // 黄色でY座標表示
+        print_int(15, 2, g_mouse.y, 0x0E);
 
-        // 古いマウスカーソルの描画を消去
         if (last_x != -1 && last_y != -1) {
             int old_offset = (last_y * 80 + last_x) * 2;
-            // 数値表示領域と被らない場合のみ消去
             if (!(last_y == 2 && last_x < 25) && !(last_y == 0)) {
                 vram[old_offset] = ' ';
                 vram[old_offset + 1] = 0x07;
             }
         }
 
-        // 新しいマウスカーソル（'X' マーク）を画面に描画
         int32_t current_x = g_mouse.x;
         int32_t current_y = g_mouse.y;
         int new_offset = (current_y * 80 + current_x) * 2;
         
         if (!(current_y == 2 && current_x < 25) && !(current_y == 0)) {
-            vram[new_offset] = 'X';      // カーソル記号
-            vram[new_offset + 1] = 0x0C; // 赤色で描画
+            vram[new_offset] = 'X';
+            vram[new_offset + 1] = 0x0C;
         }
 
         last_x = current_x;
         last_y = current_y;
 
-        // CPUへの負荷軽減命令
         asm volatile("hlt");
     }
 }
